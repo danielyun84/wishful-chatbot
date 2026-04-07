@@ -1,0 +1,72 @@
+============================================
+위시풀스테이 AI 직원 챗봇 - 실행 방법
+============================================
+
+▶ 1단계: Anthropic API 키 입력
+─────────────────────────────────
+.env 파일을 열고
+  ANTHROPIC_API_KEY=여기에_API_키_입력
+이 부분에 실제 API 키를 붙여넣기
+
+API 키 확인 방법:
+  https://console.anthropic.com → API Keys
+
+▶ 2단계: 비밀번호 설정 (선택)
+─────────────────────────────────
+.env 파일에서
+  CHAT_PASSWORD=wishpool2024
+원하는 비밀번호로 변경 가능
+
+
+▶ 3단계: 로컬 실행
+─────────────────────────────────
+터미널(Terminal)을 열고 아래 명령어 순서대로 입력:
+
+  cd ~/Desktop/wishpool-chatbot   ← 폴더 위치에 맞게 수정
+  npm install
+  npm start
+
+브라우저에서 접속: http://localhost:3000
+
+
+▶ 4단계: Vercel 배포 (인터넷에서 접근 가능하게)
+─────────────────────────────────
+1. https://github.com → 계정 생성
+2. 새 Repository 만들기 (이름: wishpool-chatbot)
+3. 이 폴더 파일들을 GitHub에 업로드
+   (단, .env 파일은 업로드 하지 말 것! .gitignore에 포함됨)
+
+4. https://vercel.com → 계정 생성 후 GitHub 연결
+5. "New Project" → GitHub 저장소 선택 → Deploy
+
+6. Vercel 환경변수 설정 (중요!)
+   Settings → Environment Variables 에서 아래 4개 추가:
+
+   ANTHROPIC_API_KEY   = (실제 API 키)
+   NOTION_API_KEY      = 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
+   NOTION_DATABASE_ID  = 33b46516-4cc8-807d-a9db-000bbb39de6c
+   CHAT_PASSWORD       = (원하는 비밀번호)
+
+7. Redeploy → 완료!
+   주소: https://wishpool-chatbot.vercel.app (자동 생성)
+
+
+▶ 노션 문서 추가 방법
+─────────────────────────────────
+노션에서 "위시풀스테이 지침 & 메뉴얼" 데이터베이스에
+새 페이지를 추가하면 자동으로 챗봇에 반영됩니다.
+
+챗봇 화면 우측 상단 "🔄 문서 갱신" 버튼을 누르면
+즉시 최신 내용으로 업데이트됩니다.
+
+
+▶ 파일 구조 설명
+─────────────────────────────────
+server.js         ← 로컬 실행용 서버
+api/chat.js       ← Vercel 배포용 서버리스 함수
+public/index.html ← 챗봇 화면
+.env              ← API 키 및 설정 (비공개)
+package.json      ← 필요한 라이브러리 목록
+vercel.json       ← Vercel 배포 설정
+
+============================================
