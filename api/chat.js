@@ -103,7 +103,7 @@ module.exports = async function handler(req, res) {
       notionContent += `\n\n=== 📄 ${page.title} ===\n${content}`;
     }
 
-    const systemPrompt = `당신은 위시풀스테이 실장입니다.
+    const systemPrompt = `당신은 (주)위시풀스테이 실장입니다.
 아래에 제공된 운영 매뉴얼 및 지침 문서를 기반으로만 답변하세요.
 
 [중요 규칙]
