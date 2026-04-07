@@ -1,5 +1,6 @@
 // =============================================
-// 위시풀스테이 AI 직원 챗봇 - Vercel 서버리스 함수
+// 위시풀스테이 AI 직원 챗봇 - Vercel 서버리스
+// 2단계 RAG: 제목 라우팅 → 관련 문서만 로드
 // =============================================
 const Anthropic = require('@anthropic-ai/sdk');
 const { Client: NotionClient } = require('@notionhq/client');
@@ -24,36 +25,52 @@ function extractBlockText(block) {
   }
 }
 
-async function loadNotionDocuments(notion) {
-  const DATABASE_ID = process.env.NOTION_DATABASE_ID;
-  const dbResponse = await notion.databases.query({ database_id: DATABASE_ID });
-  let allContent = '';
+async function getPagesList(notion) {
+  const dbResponse = await notion.databases.query({
+    database_id: process.env.NOTION_DATABASE_ID
+  });
+  return dbResponse.results.map(page => ({
+    id: page.id,
+    title: page.properties['문서명']?.title?.[0]?.plain_text || '제목 없음'
+  }));
+}
 
-  for (const page of dbResponse.results) {
-    const titleProp = page.properties['문서명'];
-    const title = titleProp?.title?.[0]?.plain_text || '제목 없음';
-    let pageContent = `\n\n==============================\n📄 ${title}\n==============================\n`;
-
-    let hasMore = true;
-    let cursor = undefined;
-    while (hasMore) {
-      const blocksResponse = await notion.blocks.children.list({
-        block_id: page.id,
-        start_cursor: cursor,
-      });
-      for (const block of blocksResponse.results) {
-        pageContent += extractBlockText(block);
-      }
-      hasMore = blocksResponse.has_more;
-      cursor = blocksResponse.next_cursor;
-    }
-    allContent += pageContent;
+async function getPageContent(notion, pageId) {
+  let content = '';
+  let hasMore = true;
+  let cursor = undefined;
+  while (hasMore) {
+    const res = await notion.blocks.children.list({ block_id: pageId, start_cursor: cursor });
+    for (const block of res.results) content += extractBlockText(block);
+    hasMore = res.has_more;
+    cursor = res.next_cursor;
   }
-  return allContent;
+  return content;
+}
+
+async function getRelevantPages(anthropic, question, pagesList) {
+  if (pagesList.length <= 1) return pagesList;
+
+  const titlesText = pagesList.map((p, i) => `${i + 1}. ${p.title}`).join('\n');
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 80,
+    system: '문서 목록 중 질문과 관련된 문서 번호를 JSON 배열로만 답하세요. 예: [1,3] / 관련 없으면: []',
+    messages: [{ role: 'user', content: `질문: ${question}\n\n문서 목록:\n${titlesText}` }]
+  });
+
+  try {
+    const raw = response.content[0].text.trim();
+    const indices = JSON.parse(raw.match(/\[.*?\]/)[0]);
+    const relevant = indices.map(i => pagesList[i - 1]).filter(Boolean);
+    return relevant.length > 0 ? relevant : pagesList;
+  } catch {
+    return pagesList;
+  }
 }
 
 module.exports = async function handler(req, res) {
-  // CORS 헤더
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -73,20 +90,30 @@ module.exports = async function handler(req, res) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const notion = new NotionClient({ auth: process.env.NOTION_API_KEY });
 
-    const notionContent = await loadNotionDocuments(notion);
+    // 1단계: 문서 목록
+    const pagesList = await getPagesList(notion);
+
+    // 2단계: 관련 문서 선별
+    const relevantPages = await getRelevantPages(anthropic, message.trim(), pagesList);
+
+    // 3단계: 관련 문서 내용 로드
+    let notionContent = '';
+    for (const page of relevantPages) {
+      const content = await getPageContent(notion, page.id);
+      notionContent += `\n\n=== 📄 ${page.title} ===\n${content}`;
+    }
 
     const systemPrompt = `당신은 위시풀스테이의 AI 직원 도우미입니다.
 아래에 제공된 운영 매뉴얼 및 지침 문서를 기반으로만 답변하세요.
 
 [중요 규칙]
 - 문서에 있는 내용: 정확하게 안내하세요.
-- 문서에 없는 내용: 반드시 "해당 내용은 현재 등록된 문서에 없습니다."라고 답변하세요.
+- 문서에 없는 내용: "해당 내용은 현재 등록된 문서에 없습니다."라고 답변하세요.
 - 추측하거나 임의로 내용을 만들지 마세요.
 - 항상 친절하고 명확한 한국어로 답변하세요.
 
-=== 위시풀스테이 운영 매뉴얼 ===
-${notionContent}
-=================================`;
+=== 참조 문서 ===
+${notionContent || '관련 문서를 찾을 수 없습니다.'}`;
 
     const messages = [
       ...(Array.isArray(history) ? history.slice(-10) : []),
