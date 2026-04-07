@@ -69,19 +69,28 @@ async function getPagesList() {
 }
 
 // ── Step 2: 특정 페이지 내용 로드 ────────────
-async function getPageContent(pageId) {
-  if (isCacheValid() && pageContentCache[pageId]) return pageContentCache[pageId];
+async function getPageContent(pageId, depth = 0) {
+  if (depth > 2) return '';
+  if (depth === 0 && isCacheValid() && pageContentCache[pageId]) return pageContentCache[pageId];
 
   let content = '';
   let hasMore = true;
   let cursor = undefined;
   while (hasMore) {
     const res = await notion.blocks.children.list({ block_id: pageId, start_cursor: cursor });
-    for (const block of res.results) content += extractBlockText(block);
+    for (const block of res.results) {
+      if (block.type === 'child_page') {
+        const childTitle = block.child_page?.title || '';
+        content += `\n[${childTitle}]\n`;
+        content += await getPageContent(block.id, depth + 1);
+      } else {
+        content += extractBlockText(block);
+      }
+    }
     hasMore = res.has_more;
     cursor = res.next_cursor;
   }
-  pageContentCache[pageId] = content;
+  if (depth === 0) pageContentCache[pageId] = content;
   return content;
 }
 

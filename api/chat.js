@@ -35,13 +35,23 @@ async function getPagesList(notion) {
   }));
 }
 
-async function getPageContent(notion, pageId) {
+async function getPageContent(notion, pageId, depth = 0) {
+  if (depth > 2) return ''; // 최대 2단계 하위 페이지까지
   let content = '';
   let hasMore = true;
   let cursor = undefined;
   while (hasMore) {
     const res = await notion.blocks.children.list({ block_id: pageId, start_cursor: cursor });
-    for (const block of res.results) content += extractBlockText(block);
+    for (const block of res.results) {
+      if (block.type === 'child_page') {
+        // 하위 페이지 제목 + 내용 재귀 로드
+        const childTitle = block.child_page?.title || '';
+        content += `\n[${childTitle}]\n`;
+        content += await getPageContent(notion, block.id, depth + 1);
+      } else {
+        content += extractBlockText(block);
+      }
+    }
     hasMore = res.has_more;
     cursor = res.next_cursor;
   }
